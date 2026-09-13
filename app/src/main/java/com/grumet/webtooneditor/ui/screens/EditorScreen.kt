@@ -24,15 +24,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.grumet.webtooneditor.domain.TextBubble
-import com.grumet.webtooneditor.domain.TextStyleConfig
 import com.grumet.webtooneditor.domain.WebtoonPage
 import com.grumet.webtooneditor.ui.components.StylePresetManager
 import com.grumet.webtooneditor.ui.components.TextStylingControls
@@ -101,10 +100,10 @@ fun EditorScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(Color(0xFF222222))
+                    .background(Color(0xFF1E1E1E))
                     .pointerInput(Unit) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            scale = (scale * zoom).coerceIn(0.5f, 4f)
+                            scale = (scale * zoom).coerceIn(0.5f, 4.0f)
                             offset += pan
                         }
                     },
@@ -116,88 +115,101 @@ fun EditorScreen(
                     page.originalBitmap
                 }
 
+                val imageBitmap = displayBitmap.asImageBitmap()
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp),
+                        .graphicsLayer(
+                            scaleX = scale,
+                            scaleY = scale,
+                            translationX = offset.x,
+                            translationY = offset.y
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(
-                        bitmap = displayBitmap.asImageBitmap(),
-                        contentDescription = "Webtoon Page",
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    // AspectRatio Box ensuring overlays align 1:1 with the displayed image
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(imageBitmap.width.toFloat() / imageBitmap.height.toFloat())
+                            .fillMaxSize()
+                    ) {
+                        Image(
+                            bitmap = imageBitmap,
+                            contentDescription = "Webtoon Page",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
 
-                    // Draw Speech Bubbles overlay if translated mode is active
-                    if (exportMode == ExportMode.TRANSLATED_IMAGE) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val canvasW = size.width
-                            val canvasH = size.height
+                        // Speech Bubble overlays
+                        if (exportMode == ExportMode.TRANSLATED_IMAGE) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val canvasW = size.width
+                                val canvasH = size.height
 
-                            for (bubble in page.bubbles) {
-                                val bx = bubble.x * canvasW
-                                val by = bubble.y * canvasH
-                                val bw = bubble.width * canvasW
-                                val bh = bubble.height * canvasH
+                                for (bubble in page.bubbles) {
+                                    val bx = bubble.x * canvasW
+                                    val by = bubble.y * canvasH
+                                    val bw = bubble.width * canvasW
+                                    val bh = bubble.height * canvasH
 
-                                val isSelected = bubble.id == selectedBubbleId
+                                    val isSelected = bubble.id == selectedBubbleId
 
-                                // Draw speech bubble bounding box
-                                drawRoundRect(
-                                    color = if (isSelected) Color(0xFF3B82F6) else Color(0x88FF5722),
-                                    topLeft = Offset(bx, by),
-                                    size = Size(bw, bh),
-                                    cornerRadius = CornerRadius(8f, 8f),
-                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (isSelected) 4f else 2f)
-                                )
-                            }
-                        }
-
-                        // Text overlays
-                        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                            val maxW = maxWidth
-                            val maxH = maxHeight
-
-                            for (bubble in page.bubbles) {
-                                val isSelected = bubble.id == selectedBubbleId
-
-                                val bubbleStyle = bubble.style
-
-                                Box(
-                                    modifier = Modifier
-                                        .offset(
-                                            x = maxW * bubble.x,
-                                            y = maxH * bubble.y
-                                        )
-                                        .size(
-                                            width = maxW * bubble.width,
-                                            height = maxH * bubble.height
-                                        )
-                                        .border(
-                                            width = if (isSelected) 2.dp else 0.dp,
-                                            color = if (isSelected) Color.Blue else Color.Transparent,
-                                            shape = RoundedCornerShape(6.dp)
-                                        )
-                                        .clickable { selectedBubbleId = bubble.id }
-                                        .padding(4.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = bubble.translatedText.ifEmpty { bubble.originalText },
-                                        style = TextStyle(
-                                            color = try { Color(AndroidColor.parseColor(bubbleStyle.textColorHex)) } catch (e: Exception) { Color.Black },
-                                            fontSize = bubbleStyle.fontSizeSp.sp,
-                                            fontWeight = if (bubbleStyle.isBold) FontWeight.Bold else FontWeight.Normal,
-                                            textAlign = TextAlign.Center,
-                                            shadow = if (bubbleStyle.shadowBlurPx > 0) {
-                                                Shadow(
-                                                    color = try { Color(AndroidColor.parseColor(bubbleStyle.shadowColorHex)) } catch (e: Exception) { Color.Black },
-                                                    offset = Offset(bubbleStyle.shadowOffsetX, bubbleStyle.shadowOffsetY),
-                                                    blurRadius = bubbleStyle.shadowBlurPx
-                                                )
-                                            } else null
-                                        )
+                                    drawRoundRect(
+                                        color = if (isSelected) Color(0xFF2563EB) else Color(0xAAFF5722),
+                                        topLeft = Offset(bx, by),
+                                        size = Size(bw, bh),
+                                        cornerRadius = CornerRadius(6f, 6f),
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = if (isSelected) 5f else 3f)
                                     )
+                                }
+                            }
+
+                            // Precise Text Overlays
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val maxW = maxWidth
+                                val maxH = maxHeight
+
+                                for (bubble in page.bubbles) {
+                                    val isSelected = bubble.id == selectedBubbleId
+                                    val bubbleStyle = bubble.style
+
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(
+                                                x = maxW * bubble.x,
+                                                y = maxH * bubble.y
+                                            )
+                                            .size(
+                                                width = maxW * bubble.width,
+                                                height = maxH * bubble.height
+                                            )
+                                            .border(
+                                                width = if (isSelected) 2.dp else 0.dp,
+                                                color = if (isSelected) Color(0xFF2563EB) else Color.Transparent,
+                                                shape = RoundedCornerShape(4.dp)
+                                            )
+                                            .clickable { selectedBubbleId = bubble.id }
+                                            .padding(2.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = bubble.translatedText.ifEmpty { bubble.originalText },
+                                            style = TextStyle(
+                                                color = try { Color(AndroidColor.parseColor(bubbleStyle.textColorHex)) } catch (e: Exception) { Color.Black },
+                                                fontSize = bubbleStyle.fontSizeSp.sp,
+                                                fontWeight = if (bubbleStyle.isBold) FontWeight.Bold else FontWeight.Normal,
+                                                textAlign = TextAlign.Center,
+                                                shadow = if (bubbleStyle.shadowBlurPx > 0) {
+                                                    Shadow(
+                                                        color = try { Color(AndroidColor.parseColor(bubbleStyle.shadowColorHex)) } catch (e: Exception) { Color.Black },
+                                                        offset = Offset(bubbleStyle.shadowOffsetX, bubbleStyle.shadowOffsetY),
+                                                        blurRadius = bubbleStyle.shadowBlurPx
+                                                    )
+                                                } else null
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -221,7 +233,7 @@ fun EditorScreen(
                             .verticalScroll(rememberScrollState())
                     ) {
                         Text(
-                            text = "Edit Text & Style",
+                            text = "Edit Bubble Text & Style",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )

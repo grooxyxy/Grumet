@@ -1,7 +1,6 @@
 package com.grumet.webtooneditor.domain
 
 import android.graphics.Bitmap
-import androidx.compose.ui.graphics.Color
 import java.util.UUID
 
 enum class Language(val code: String, val displayName: String) {
@@ -31,7 +30,7 @@ data class TextStyleConfig(
     val name: String = "Default Style",
     val fontSizeSp: Float = 16f,
     val textColorHex: String = "#000000",
-    val fontPath: String? = null, // null for default, or path to custom .ttf
+    val fontPath: String? = null,
     val isBold: Boolean = false,
     val isItalic: Boolean = false,
     val strokeWidthPx: Float = 0f,
@@ -48,10 +47,10 @@ data class TextStyleConfig(
 
 data class TextBubble(
     val id: String = UUID.randomUUID().toString(),
-    var x: Float, // normalize 0.0 - 1.0
-    var y: Float, // normalize 0.0 - 1.0
-    var width: Float, // normalize 0.0 - 1.0
-    var height: Float, // normalize 0.0 - 1.0
+    var x: Float,
+    var y: Float,
+    var width: Float,
+    var height: Float,
     var originalText: String = "",
     var translatedText: String = "",
     var style: TextStyleConfig = TextStyleConfig()

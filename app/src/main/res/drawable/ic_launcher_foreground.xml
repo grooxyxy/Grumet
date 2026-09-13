@@ -4,7 +4,6 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Webtoon Speech Bubble Vector -->
     <path
         android:fillColor="#FFFFFF"
         android:pathData="M24,30 C24,23.37 29.37,18 36,18 L72,18 C78.63,18 84,23.37 84,30 L84,54 C84,60.63 78.63,66 72,66 L48,66 L36,78 L38,66 L36,66 C29.37,66 24,60.63 24,54 Z"/>

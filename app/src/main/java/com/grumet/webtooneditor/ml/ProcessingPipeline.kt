@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 class ProcessingPipeline(private val context: Context) {
 
     private val bubbleDetector = OnnxBubbleDetector(context)
-    private val inpainter = LaMaInpainter(context)
+    private val inpainter = TeleaInpainter(context)
     private val translationEngine = TranslationEngine(context)
 
     private val _pagesFlow = MutableStateFlow<List<WebtoonPage>>(emptyList())
@@ -35,14 +35,14 @@ class ProcessingPipeline(private val context: Context) {
             _pagesFlow.value = currentPages.toList()
 
             try {
-                // Step 1: Detect speech bubbles
+                // Step 1: Detect speech bubbles with ogkalu YOLO model
                 val detectedBubbles = bubbleDetector.detectBubbles(page.originalBitmap)
                 page.bubbles.clear()
                 page.bubbles.addAll(detectedBubbles)
                 page.progress = 0.4f
                 _pagesFlow.value = currentPages.toList()
 
-                // Step 2: Auto Inpainting text inside speech bubbles
+                // Step 2: Auto Inpainting text inside speech bubbles with Telea algorithm
                 val cleanedBitmap = inpainter.inpaint(page.originalBitmap, page.bubbles)
                 page.cleanedBitmap = cleanedBitmap
                 page.progress = 0.7f

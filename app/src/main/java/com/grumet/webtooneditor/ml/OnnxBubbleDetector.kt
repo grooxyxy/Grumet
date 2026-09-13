@@ -2,7 +2,6 @@ package com.grumet.webtooneditor.ml
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.graphics.RectF
 import com.grumet.webtooneditor.domain.TextBubble
 import ai.onnxruntime.OnnxTensor
@@ -13,6 +12,10 @@ import java.io.FileOutputStream
 import java.nio.FloatBuffer
 import java.util.Collections
 
+/**
+ * Bubble detector tailored for HuggingFace `ogkalu/comic-speech-bubble-detector` ONNX model.
+ * Model output format: YOLOv8 / Detection tensor shape [1, 5, 8400] (cx, cy, w, h, confidence)
+ */
 class OnnxBubbleDetector(private val context: Context) {
 
     private var ortEnv: OrtEnvironment? = null
@@ -22,7 +25,7 @@ class OnnxBubbleDetector(private val context: Context) {
     init {
         try {
             ortEnv = OrtEnvironment.getEnvironment()
-            val modelFile = getModelFile("bubble_detector.onnx")
+            val modelFile = getModelFile("ogkalu_bubble_detector.onnx")
             if (modelFile.exists()) {
                 ortSession = ortEnv?.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
                 isInitialized = true
@@ -43,7 +46,7 @@ class OnnxBubbleDetector(private val context: Context) {
                     }
                 }
             } catch (e: Exception) {
-                // Asset might not exist if downloaded during runtime/build
+                // Asset might not exist
             }
         }
         return file
@@ -51,7 +54,6 @@ class OnnxBubbleDetector(private val context: Context) {
 
     fun detectBubbles(bitmap: Bitmap): List<TextBubble> {
         if (!isInitialized || ortSession == null) {
-            // Fallback algorithm for heuristic bubble / text box detection if ONNX model is missing or fails
             return runHeuristicBubbleDetection(bitmap)
         }
 
@@ -63,10 +65,17 @@ class OnnxBubbleDetector(private val context: Context) {
             val intValues = IntArray(inputSize * inputSize)
             resized.getPixels(intValues, 0, inputSize, 0, 0, inputSize, inputSize)
 
+            // Normalize CHW [0.0..1.0]
             for (i in 0 until inputSize * inputSize) {
                 val pixel = intValues[i]
                 floatBuffer.put(((pixel shr 16 and 0xFF) / 255.0f))
+            }
+            for (i in 0 until inputSize * inputSize) {
+                val pixel = intValues[i]
                 floatBuffer.put(((pixel shr 8 and 0xFF) / 255.0f))
+            }
+            for (i in 0 until inputSize * inputSize) {
+                val pixel = intValues[i]
                 floatBuffer.put(((pixel and 0xFF) / 255.0f))
             }
             floatBuffer.rewind()
@@ -76,15 +85,43 @@ class OnnxBubbleDetector(private val context: Context) {
             val results = ortSession!!.run(Collections.singletonMap(inputName, tensor))
 
             val detected = mutableListOf<TextBubble>()
-            // Parse tensor output into bounding boxes normalized [0..1]
-            // If output parsing fails, fallback to heuristics
             if (results != null && results.size() > 0) {
-                // Parsing logic...
+                val outputTensor = results.get(0).value as? Array<Array<FloatArray>>
+                if (outputTensor != null) {
+                    val rawData = outputTensor[0] // [5][8400]
+                    val numDetections = rawData[0].size
+                    val confThreshold = 0.35f
+
+                    for (i in 0 until numDetections) {
+                        val cx = rawData[0][i] / 640f
+                        val cy = rawData[1][i] / 640f
+                        val w = rawData[2][i] / 640f
+                        val h = rawData[3][i] / 640f
+                        val conf = rawData[4][i]
+
+                        if (conf >= confThreshold) {
+                            val left = (cx - w / 2f).coerceIn(0f, 1f)
+                            val top = (cy - h / 2f).coerceIn(0f, 1f)
+                            val right = (cx + w / 2f).coerceIn(0f, 1f)
+                            val bottom = (cy + h / 2f).coerceIn(0f, 1f)
+
+                            detected.add(
+                                TextBubble(
+                                    x = left,
+                                    y = top,
+                                    width = right - left,
+                                    height = bottom - top
+                                )
+                            )
+                        }
+                    }
+                }
             }
+
             if (detected.isEmpty()) {
                 runHeuristicBubbleDetection(bitmap)
             } else {
-                detected
+                mergeOverlappingBubbles(detected)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -93,60 +130,43 @@ class OnnxBubbleDetector(private val context: Context) {
     }
 
     private fun runHeuristicBubbleDetection(bitmap: Bitmap): List<TextBubble> {
-        // High-contrast and bright region heuristic detector (finds speech bubbles)
         val bubbles = mutableListOf<TextBubble>()
-        val width = bitmap.width
-        val height = bitmap.height
-
-        // Downsample for speed
-        val sampleW = 200
-        val sampleH = (height * (200.0 / width)).toInt().coerceAtLeast(200)
+        val sampleW = 300
+        val sampleH = (bitmap.height * (300.0 / bitmap.width)).toInt().coerceAtLeast(300)
         val scaled = Bitmap.createScaledBitmap(bitmap, sampleW, sampleH, true)
 
         val pixels = IntArray(sampleW * sampleH)
         scaled.getPixels(pixels, 0, sampleW, 0, 0, sampleW, sampleH)
 
-        // Find bright regions (white speech bubbles)
         val binary = BooleanArray(sampleW * sampleH)
         for (i in pixels.indices) {
             val color = pixels[i]
             val r = (color shr 16) and 0xFF
             val g = (color shr 8) and 0xFF
             val b = color and 0xFF
-            val brightness = (r + g + b) / 3
-            // White or near white speech bubble
-            binary[i] = brightness > 220
+            binary[i] = ((r + g + b) / 3) > 215
         }
 
-        // Simple bounding box grouping
-        val gridRows = 8
-        val gridCols = 4
+        val gridRows = 10
+        val gridCols = 5
         val cellW = sampleW / gridCols
         val cellH = sampleH / gridRows
 
         for (r in 0 until gridRows) {
             for (c in 0 until gridCols) {
                 var whiteCount = 0
-                val totalInCell = cellW * cellH
                 for (cy in r * cellH until (r + 1) * cellH) {
                     for (cx in c * cellW until (c + 1) * cellW) {
                         if (binary[cy * sampleW + cx]) whiteCount++
                     }
                 }
-                if (whiteCount.toFloat() / totalInCell > 0.45f) {
-                    // Normalize box coordinates
-                    val nx = (c * cellW).toFloat() / sampleW
-                    val ny = (r * cellH).toFloat() / sampleH
-                    val nw = cellW.toFloat() / sampleW
-                    val nh = cellH.toFloat() / sampleH
-
-                    // Merge adjacent if possible, or add
+                if (whiteCount.toFloat() / (cellW * cellH) > 0.40f) {
                     bubbles.add(
                         TextBubble(
-                            x = nx,
-                            y = ny,
-                            width = nw,
-                            height = nh
+                            x = (c * cellW).toFloat() / sampleW,
+                            y = (r * cellH).toFloat() / sampleH,
+                            width = cellW.toFloat() / sampleW,
+                            height = cellH.toFloat() / sampleH
                         )
                     )
                 }
@@ -154,15 +174,7 @@ class OnnxBubbleDetector(private val context: Context) {
         }
 
         if (bubbles.isEmpty()) {
-            // Default center bubble if nothing detected
-            bubbles.add(
-                TextBubble(
-                    x = 0.2f,
-                    y = 0.3f,
-                    width = 0.6f,
-                    height = 0.15f
-                )
-            )
+            bubbles.add(TextBubble(x = 0.2f, y = 0.3f, width = 0.6f, height = 0.18f))
         }
 
         return mergeOverlappingBubbles(bubbles)

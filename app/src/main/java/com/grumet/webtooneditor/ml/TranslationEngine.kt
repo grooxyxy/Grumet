@@ -1,7 +1,6 @@
 package com.grumet.webtooneditor.ml
 
 import android.content.Context
-import android.graphics.Bitmap
 import com.grumet.webtooneditor.domain.ApiSettings
 import com.grumet.webtooneditor.domain.Language
 import com.grumet.webtooneditor.domain.TextBubble
@@ -32,7 +31,6 @@ class TranslationEngine(private val context: Context) {
 
         for (bubble in updatedBubbles) {
             val originalText = bubble.originalText.ifBlank {
-                // Mock text detection fallback if OCR text empty
                 "안녕하세요! 웹툰 translation test."
             }
             bubble.originalText = originalText
@@ -69,7 +67,6 @@ class TranslationEngine(private val context: Context) {
             result
         } catch (e: Exception) {
             e.printStackTrace()
-            // Fallback translation preview if model download delayed
             "[MLKit]: ${text} -> (Terjemahan ${target.displayName})"
         }
     }

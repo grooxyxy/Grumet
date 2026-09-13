@@ -37,7 +37,7 @@ jobs:
       - name: Download ONNX Models into App Assets
         run: |
           mkdir -p app/src/main/assets
-          echo "Placeholder model asset for build pipeline" > app/src/main/assets/bubble_detector.onnx
+          echo "Placeholder model asset for build pipeline" > app/src/main/assets/ogkalu_bubble_detector.onnx
           echo "Placeholder model asset for build pipeline" > app/src/main/assets/lama_inpainting.onnx
 
       - name: Grant Execute Permission for Gradle
